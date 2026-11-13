@@ -118,7 +118,11 @@ export function makeMachines({ api }) {
     parts.push(code);
     for (const device of state.devices || []) {
       const each = el("div", "machine-device");
-      each.append(el("span", "name", device.name), link(t("forget"), "forget", device.index));
+      // Whose account paired it: with more than one identity on a tailnet, a
+      // device is only identifiable by what it signed in as.
+      each.append(el("span", "name", device.name),
+                  el("span", "meta", device.login || ""),
+                  link(t("forget"), "forget", device.index));
       parts.push(each);
     }
     if (state.refusal) parts.push(el("p", "machine-why", state.refusal));

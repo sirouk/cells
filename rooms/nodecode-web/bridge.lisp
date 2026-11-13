@@ -27,12 +27,16 @@
 ;;;; Everything else -- every byte of the page, the operator token, the socket
 ;;;; at /gateway -- passes through untouched.
 ;;;;
-;;;; It answers nobody until the operator turns it on, and then only their own
-;;;; tailnet login. Turning it on mints a pairing code; the device that
-;;;; presents it is given a cookie of its own, so the code is spent once and
-;;;; every device can be forgotten on its own. The page is handed the operator
-;;;; token by one script tag this file serves, so the address bar never
-;;;; carries it.
+;;;; It answers nobody until the operator turns it on, and then only a request
+;;;; the tailnet's front door vouched for: serve stamps who connected, and a
+;;;; request that never went through it carries no login at all, which is
+;;;; refused. Any device signed in to the tailnet may then ask to pair, and the
+;;;; code is what admits it -- the machine itself may carry one person's login
+;;;; while the phone or laptop carries another of theirs. The device that
+;;;; presents the code is given a cookie of its own, records the account it
+;;;; paired as, and can be forgotten on its own. The page is handed the
+;;;; operator token by one script tag this file serves, so the address bar
+;;;; never carries it.
 ;;;;
 ;;;; The route here is the operator's alone and takes the operator token like
 ;;;; every /api route: remote access is not something a page another site
@@ -679,7 +683,6 @@ whatever else the gateway makes of it."
       (multiple-value-bind (method target headers) (parse-head head)
         (let* ((question (position #\? target))
                (path (if question (subseq target 0 question) target))
-               (owner (getf *bridge* :login))
                (body (request-body fd left headers))
                (login (header headers "tailscale-user-login")))
           (cond
@@ -690,10 +693,6 @@ whatever else the gateway makes of it."
             ((null login)
              (setf *bridge-refusal* "a request that did not come through the tailnet")
              (refuse fd 403 "Forbidden" "this address answers through the tailnet only"))
-            ((not (and owner (string-equal login owner)))
-             (setf *bridge-refusal* (format nil "~a is not the operator of this machine" login))
-             (refuse fd 403 "Forbidden"
-                     (format nil "this machine answers its operator only; ~a is not~%" login)))
             ((string= path "/pair")
              (if (string= method "POST")
                  (pair client headers body)
@@ -847,6 +846,7 @@ cell loads before the gateway has published the port it forwards to."
           do (push (nlk:json-object
                     "index" at
                     "name" (or (nlk:json-value device :text "name") "a device")
+                    "login" (or (nlk:json-value device :text "login") "")
                     "created" (or (nlk:json-value device :integer "created") 0))
                    rows))
     (coerce (nreverse rows) 'simple-vector)))
