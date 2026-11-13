@@ -1,4 +1,4 @@
-;;;; bridge.lisp --- this organism from the rest of the tailnet, over https.
+;;;; remote.lisp --- this organism from the rest of the tailnet, over https.
 ;;;;
 ;;;; SPDX-License-Identifier: MIT
 ;;;;
@@ -42,7 +42,7 @@
 ;;;; every /api route: remote access is not something a page another site
 ;;;; frames could turn on.
 
-(in-package #:nodecode-web)
+(in-package #:nodecode-web-remote)
 
 ;; Parameters, not constants: a cell whose file is reloaded in a running image
 ;; meets each of these again, and a constant's redefinition stops the file there.
@@ -54,6 +54,12 @@
   "The most connections answered at once; the rest are closed.")
 (defparameter *bridge-cookie* "nodecode-bridge"
   "What a paired device's cookie is called.")
+(defparameter *bridge-https-port* 8443
+  "The https port this node serves the page on, beside whatever it already
+serves on 443. A port of its own, never the root: the page asks the gateway
+for absolute paths (/api/...), and tailscale's --set-path strips the prefix
+before they arrive, so a path scope would break the page -- while a second
+port is a mapping of its own that leaves the node's 443 exactly as it was.")
 (defparameter *bridge-cookie-seconds* (* 30 24 60 60)
   "How long a paired device stays paired, in seconds.")
 (defparameter *bridge-code-seconds* (* 10 60)
@@ -98,11 +104,19 @@
          (dns (and (hash-table-p self) (nlk:json-value self :text "DNSName"))))
     (and dns (plusp (length dns)) (string-right-trim "." dns))))
 
+(defun bridge-https-port ()
+  "The https port to serve on: the cell's setting when it has one, else 8443.
+Never 443, which is not this cell's to take."
+  (let ((chosen (ignore-errors (setting :https_port))))
+    (if (and (integerp chosen) (plusp chosen) (/= chosen 443))
+        chosen
+        *bridge-https-port*)))
+
 (defun bridge-address ()
   "The https address this bridge answers at, or NIL when this machine is not
 on a tailnet that has HTTPS."
   (let ((name (tailnet-name)))
-    (and name (format nil "https://~a/web/" name))))
+    (and name (format nil "https://~a:~d/web/" name (bridge-https-port)))))
 
 ;;; --- paired devices -----------------------------------------------------
 
@@ -763,15 +777,50 @@ machine reaches is serve's own https listener, never this."
                 (values (if (plusp (length why)) why "ok") (eql 0 code))))
           (error (condition) (values (princ-to-string condition) nil))))))
 
-(defun serve-on (port)
-  "Point this node's own https address at PORT => (values OKP WHY)."
+(defun tailscale-output (&rest arguments)
+  "Tailscale with ARGUMENTS => (values STDOUT OKP). run-tailscale answers
+what went wrong instead, which is what a caller that only needs to know
+whether it worked wants; this is for the ones that read what it said."
+  (let ((binary (tailscale-binary)))
+    (if (null binary)
+        (values "" nil)
+        (handler-case
+            (multiple-value-bind (output error code)
+                (uiop:run-program (cons binary arguments)
+                                  :output :string :error-output :string :ignore-error-status t)
+              (declare (ignore error))
+              (values (or output "") (eql 0 code)))
+          (error () (values "" nil))))))
+
+(defun https-port-taken-p (port)
+  "Is PORT already serving something at this node? Then it is not ours to
+replace: the answer names what is there, so the panel can say so."
   (multiple-value-bind (output okp)
-      (run-tailscale "serve" "--bg" "--https=443" (format nil "http://127.0.0.1:~d" port))
+      (tailscale-output "serve" "status")
+    (when okp
+      (let ((there (format nil ":~d " port)))
+        (dolist (line (uiop:split-string output :separator '(#\Newline)))
+          (when (search there line)
+            (return-from https-port-taken-p (string-trim '(#\Space #\Return) line))))
+        nil))))
+
+(defun serve-on (port)
+  "Serve this bridge on its own https port => (values OKP WHY). Not 443, and
+not a path under it: the node's root keeps whatever it was serving."
+  (let ((taken (https-port-taken-p (bridge-https-port))))
+    (when taken
+      (return-from serve-on
+        (values nil (format nil "port ~d is already served at this node (~a); give this cell another port"
+                            (bridge-https-port) taken)))))
+  (multiple-value-bind (output okp)
+      (run-tailscale "serve" "--bg" (format nil "--https=~d" (bridge-https-port))
+                     (format nil "http://127.0.0.1:~d" port))
     (values okp output)))
 
 (defun serve-off ()
-  "Take the https address back down."
-  (run-tailscale "serve" "--https=443" "off"))
+  "Take this bridge's own https port back down, and nothing else: 443 is not
+this cell's to touch, and neither is any other port the node serves."
+  (run-tailscale "serve" (format nil "--https=~d" (bridge-https-port)) "off"))
 
 (defun bridge-running-p ()
   "Is remote access on?"
@@ -851,10 +900,22 @@ cell loads before the gateway has published the port it forwards to."
                    rows))
     (coerce (nreverse rows) 'simple-vector)))
 
+(defun tailnet-https-p ()
+  "May this node have an https certificate? Tailscale grants it per node, and
+names the domains it would issue for: both are in the status this reads, so
+the question is answered without asking for a certificate."
+  (let* ((status (tailnet-status))
+         (self (and status (gethash "Self" status)))
+         (caps (and (hash-table-p self) (gethash "Capabilities" self)))
+         (domains (and status (gethash "CertDomains" status))))
+    (and (plusp (length (or domains #())))
+         (some (lambda (cap) (and (stringp cap) (string= cap "https")))
+               (coerce (or caps #()) 'list))
+         t)))
+
 (defun tailnet-advice ()
-  "What stands in the way of serving this page, and where to take that step.
-NIL when nothing does: an organism with a name and a tailscale to serve it
-needs no advice, and one whose serve fails says so in the refusal itself."
+  "What stands in the way of serving this page, and where to take that step,
+in the order the steps have to be taken. NIL when nothing does."
   (cond
     ((null (tailscale-binary))
      (nlk:json-object
@@ -870,13 +931,21 @@ needs no advice, and one whose serve fails says so in the refusal itself."
       "step" "Run `tailscale up' and sign in for the account that owns this machine. Its address appears here once it is connected."
       "label" "Tailscale"
       "url" "https://login.tailscale.com/admin/machines"))
+    ((not (tailnet-https-p))
+     (nlk:json-object
+      "reason" "no_https"
+      "text" "This tailnet may not issue an https certificate for this machine, so there is no secure address to serve the page at."
+      "step" "Switch on HTTPS certificates for the tailnet, once, in the admin console: DNS, then HTTPS Certificates. It takes effect in about a minute and needs no restart."
+      "label" "Open the DNS settings"
+      "url" "https://login.tailscale.com/admin/dns"))
     (t :null)))
 
 (defun bridge-json ()
   "Remote access as the panel reads it."
   (let ((running (bridge-running-p)))
     (nlk:json-object
-     "available" (and (tailscale-binary) (tailnet-name) t)
+     "available" (and (tailscale-binary) (tailnet-name) (tailnet-https-p) t)
+     "https_port" (bridge-https-port)
      "address" (or (bridge-address) :null)
      "running" (and running t)
      "code" (if (code-live-p) (getf *bridge* :code) :null)

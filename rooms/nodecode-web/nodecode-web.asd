@@ -26,7 +26,6 @@
                (:file "cell-test")
                (:file "tasks-test")
                (:file "inline-color-test")
-               (:file "syntax-test")
-               (:file "bridge-test"))
+               (:file "syntax-test"))
   :perform (test-op (operation component)
                     (uiop:symbol-call '#:nodecode.test '#:run-web-tests)))

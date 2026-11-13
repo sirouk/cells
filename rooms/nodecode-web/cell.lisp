@@ -80,7 +80,5 @@ switch is on is served from here, so the page cannot turn it off."
   (:route "/api/web/tasks" (lambda (env) (tasks-route env)))
   ;; The other organisms this one can switch to (machines.lisp), behind it too.
   (:route "/api/web/machines" (lambda (env) (machines-route env)))
-  ;; This organism reached from the rest of the tailnet, over https (bridge.lisp).
-  (:route "/api/web/bridge" (lambda (env) (bridge-route env)))
   (:hook 'nle::cell-off-refusal #'keep-the-page))
 

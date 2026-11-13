@@ -199,7 +199,7 @@ export function makeMachines({ api }) {
     }
     // Remote access answers on its own: a cell without it still lists machines.
     try {
-      bridge = await api("GET", "/api/web/bridge");
+      bridge = await api("GET", "/api/remote");
     } catch (error) {}
     // Remote access first: it is about this machine, and the list of others can
     // run long enough to carry it out of sight at the bottom of the panel.
@@ -213,7 +213,7 @@ export function makeMachines({ api }) {
     if (button.dataset.index !== undefined) body.index = Number(button.dataset.index);
     button.dataset.busy = "1";
     try {
-      await api("POST", "/api/web/bridge", body);
+      await api("POST", "/api/remote", body);
       await fill();
     } catch (error) {
       button.dataset.busy = "0";
