@@ -84,3 +84,7 @@ switch is on is served from here, so the page cannot turn it off."
   (:route "/api/web/bridge" (lambda (env) (bridge-route env)))
   (:hook 'nle::cell-off-refusal #'keep-the-page))
 
+;; Remote access was left on, and the process that held it is not this one:
+;; start it again, rather than leaving tailscaled serving a port nothing has.
+(bridge-resume)
+

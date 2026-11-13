@@ -117,6 +117,24 @@ on a tailnet that has HTTPS."
   (nlk:write-file-atomically (devices-path)
                              (nlk:encode-json-object (nlk:json-object "devices" devices))))
 
+(defun bridge-intent-path ()
+  "A file whose presence says remote access was left on: the next boot starts
+it again. It lives in the home, not in a cell folder, so an update that brings
+a new generation along does not take the wish with it."
+  (nlk:home "web/bridge-on"))
+
+(defun bridge-intended-p ()
+  "Was remote access on when this organism last ran?"
+  (and (probe-file (bridge-intent-path)) t))
+
+(defun keep-intent (on)
+  "Write down that remote access is ON, or forget it."
+  (let ((path (bridge-intent-path)))
+    (cond (on (ensure-directories-exist path)
+              (with-open-file (out path :direction :output :if-exists :supersede)
+                (write-string "on" out)))
+          (t (ignore-errors (delete-file path))))))
+
 (defun random-bytes (count)
   "COUNT bytes from the kernel's own source of them."
   (let ((buffer (make-array count :element-type '(unsigned-byte 8))))
@@ -778,6 +796,7 @@ but serve's own https listener; this bridge is behind it, on loopback."
           (setf *bridge* nil)
           (return-from bridge-start
             (values nil (format nil "tailscale would not serve it: ~a" why))))
+        (keep-intent t)
         (mint-code))
       (values t (bridge-address)))))
 
@@ -789,7 +808,25 @@ but serve's own https listener; this bridge is behind it, on loopback."
       (serve-off)
       (ignore-errors (sb-thread:join-thread (getf state :thread) :timeout 3))
       (setf *bridge* nil))
+    (keep-intent nil)
     t))
+
+(defun bridge-resume ()
+  "Start remote access again for a boot that finds it was left on. The process
+that held the tunnel is gone, and the serve entry tailscaled kept now points
+at a port nothing listens on, so the wish is re-made: a fresh port, serve
+re-aimed at it, and the paired devices as they were. In a thread, because the
+cell loads before the gateway has published the port it forwards to."
+  (when (bridge-intended-p)
+    (sb-thread:make-thread
+     (lambda ()
+       (loop repeat 600
+             until (plusp (gateway-port))
+             do (sleep 0.2))
+       (multiple-value-bind (okp why) (bridge-start)
+         (unless okp
+           (setf *bridge-error* why))))
+     :name "web bridge resume")))
 
 ;;; --- what the panel reads -----------------------------------------------
 
