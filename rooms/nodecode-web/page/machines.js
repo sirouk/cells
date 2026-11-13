@@ -71,12 +71,26 @@ export function makeMachines({ api }) {
     return parts;
   }
 
+  /** Framed, the page cannot become another origin: the frame is moved for it. */
+  const framed = window.parent !== window;
+  function go(url) {
+    if (framed) {
+      // The view that framed this page holds the clipboard and the frame: it
+      // lifts the target's frame refusal by proxying it, so it is asked to move.
+      try {
+        window.parent.postMessage({ nodecode: "frame", id: 0, kind: "switch", payload: { url } }, "*");
+        return;
+      } catch (error) {}
+    }
+    window.location.assign(url);
+  }
+
   /** Choose a machine: a link is followed, a peer is reached first. */
   async function open(button) {
     if (button.dataset.busy === "1") return;
     if (button.dataset.link) {
       // The same tab, on the other organism's own origin.
-      window.location.assign(button.dataset.link);
+      go(button.dataset.link);
       return;
     }
     const host = button.dataset.host;
@@ -88,7 +102,7 @@ export function makeMachines({ api }) {
     try {
       const answer = await api("POST", "/api/web/machines", { action: "connect", host });
       if (!answer?.url) throw new Error(t("no link came back"));
-      window.location.assign(answer.url);
+      go(answer.url);
     } catch (error) {
       button.dataset.busy = "0";
       if (meta) meta.textContent = was;
