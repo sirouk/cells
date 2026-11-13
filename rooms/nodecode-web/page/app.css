@@ -2052,6 +2052,21 @@ button.p-row:active { background: var(--field-lit); }
 .machine[data-current] .meta { color: var(--tertiary); }
 .machine-why { margin: 0; padding: 4px 10px 6px; font-size: 11px; line-height: 1.45; color: var(--tertiary); }
 .machine-error { margin: 0; padding: 2px 10px 7px 24px; font-size: 11px; line-height: 1.45; color: var(--danger-lit); }
+/* Remote access (machines.js, bridge.lisp): the address is text to copy and
+   the code is a code to type, so both are selectable and neither is a link. */
+.machine-address { margin: 0; padding: 0 10px 6px; font-family: var(--mono); font-size: 11px;
+                   line-height: 1.45; color: var(--tertiary); word-break: break-all;
+                   user-select: text; }
+.machine-code, .machine-device { display: flex; align-items: center; gap: 8px; padding: 2px 10px 4px;
+                                 font-size: 11px; color: var(--tertiary); }
+.machine-code .code { font-family: var(--micro); letter-spacing: .14em; color: var(--primary);
+                      user-select: text; }
+.machine-code .meta, .machine-device .name { flex: 1 1 auto; min-width: 0; overflow: hidden;
+                                             text-overflow: ellipsis; white-space: nowrap; }
+.machine-link { border: 0; background: none; padding: 2px 2px; color: var(--accent);
+                font: inherit; font-size: 11px; cursor: pointer; }
+.machine-link:hover { text-decoration: underline; }
+.machine-link[data-busy] { opacity: .5; cursor: progress; }
 .pop .choice[aria-checked="true"] { color: var(--primary); }
 .pop .choice[aria-checked="true"]::after {
   content: ""; width: 4px; height: 8px; margin: -3px 3px 0 0; transform: rotate(45deg);

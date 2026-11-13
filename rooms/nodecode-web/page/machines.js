@@ -1,4 +1,5 @@
-// machines.js -- the other organisms this one can switch to.
+// machines.js -- the other organisms this one can switch to, and this one
+// reached from the rest of the tailnet.
 //
 // The list is the cell's (GET /api/web/machines): the organism serving this tab,
 // the other homes on this machine, and the instances the operator's tailnet
@@ -8,6 +9,12 @@
 // loopback forward over the operator's own ssh (POST, action connect) and the tab
 // then moves to that loopback link, which is a page of its own origin with its
 // own token: a navigation, not a frame.
+//
+// The last group is the other direction (bridge.lisp, GET /api/web/bridge): this
+// organism served at its node's own https name, for a phone or a laptop that has
+// no ssh and no loopback port. Turning it on hands out a pairing code; a device
+// that types it is paired, and can be forgotten on its own. The address is text
+// to read and copy, never a link this page follows: it is this page, elsewhere.
 import { el } from "./observe.js";
 import { t } from "./i18n.js";
 
@@ -25,12 +32,21 @@ export function makeMachines({ api }) {
     return button;
   }
 
-  function group(text) {
-    return el("div", "machine-group", t(text));
+  function group(label) {
+    return el("div", "machine-group", label);
+  }
+
+  /** A word that does something: a smaller line than a machine's own row. */
+  function link(label, act, index) {
+    const button = el("button", "machine-link", label);
+    button.type = "button";
+    button.dataset.act = act;
+    if (index !== undefined) button.dataset.index = String(index);
+    return button;
   }
 
   function draw(data) {
-    const parts = [group("Machines")];
+    const parts = [group(t("Machines"))];
     const self = data?.self;
     parts.push(row({
       name: self?.name || t("this machine"),
@@ -42,7 +58,7 @@ export function makeMachines({ api }) {
     const others = (data?.local || []).filter((each) => !each.current);
     const running = others.filter((each) => each.running && each.link);
     if (running.length) {
-      parts.push(group("On this machine"));
+      parts.push(group(t("On this machine")));
       for (const each of running) {
         parts.push(row({ name: each.label, meta: t("port {port}", { port: each.port }), link: each.link, on: true }));
       }
@@ -55,7 +71,7 @@ export function makeMachines({ api }) {
     } else if (!online.length) {
       parts.push(el("p", "machine-why", t("Nothing of yours is on the tailnet right now.")));
     } else {
-      parts.push(group("Your tailnet"));
+      parts.push(group(t("Your tailnet")));
       for (const each of online) {
         const tunnel = each.tunnel && each.tunnel.up ? each.tunnel : null;
         parts.push(row({
@@ -68,6 +84,44 @@ export function makeMachines({ api }) {
       const offline = peers.length - online.length;
       if (offline > 0) parts.push(el("p", "machine-why", t("{n} offline", { n: offline })));
     }
+    return parts;
+  }
+
+  /** This organism at its node's own https name, and the devices paired to it. */
+  function remote(state, busy) {
+    const parts = [group(t("Remote access"))];
+    if (!state) return parts;
+    if (!state.available) {
+      parts.push(el("p", "machine-why", t("No tailnet names this machine, so there is nothing to serve it over.")));
+      return parts;
+    }
+    const toggle = row({
+      name: t("Remote access"),
+      meta: busy ? t("working…") : state.running ? t("on") : t("off"),
+      on: state.running,
+    });
+    toggle.dataset.act = state.running ? "stop" : "start";
+    if (busy) toggle.dataset.busy = "1";
+    parts.push(toggle);
+    if (!state.running) return parts;
+
+    // The address is for reading and copying, so it is text, not a link.
+    parts.push(el("p", "machine-address", state.address || ""));
+    // A code is spent by the device that pairs with it, and none stands
+    // until one is asked for: the panel always offers the asking.
+    const code = el("div", "machine-code");
+    if (state.code) {
+      code.append(el("span", "code", state.code),
+                  el("span", "meta", t("expires in {n} minutes", { n: state.code_minutes })));
+    }
+    code.append(link(t("new code"), "code"));
+    parts.push(code);
+    for (const device of state.devices || []) {
+      const each = el("div", "machine-device");
+      each.append(el("span", "name", device.name), link(t("forget"), "forget", device.index));
+      parts.push(each);
+    }
+    if (state.refusal) parts.push(el("p", "machine-why", state.refusal));
     return parts;
   }
 
@@ -111,21 +165,51 @@ export function makeMachines({ api }) {
     }
   }
 
+  /** Read both lists and draw them into the panel. */
+  async function fill() {
+    const panel = document.getElementById("machines");
+    if (!panel) return;
+    panel.replaceChildren(el("p", "machine-why", t("Reading the machines…")));
+    let machines = null;
+    let bridge = null;
+    try {
+      machines = await api("GET", "/api/web/machines");
+    } catch (error) {
+      panel.replaceChildren(el("p", "machine-error", t("Couldn't read the machines: {why}", { why: error.message })));
+      return;
+    }
+    // Remote access answers on its own: a cell without it still lists machines.
+    try {
+      bridge = await api("GET", "/api/web/bridge");
+    } catch (error) {}
+    panel.replaceChildren(...draw(machines), ...remote(bridge, false));
+  }
+
+  /** Turn remote access on or off, mint a code, or forget a device. */
+  async function act(button) {
+    if (button.dataset.busy === "1") return;
+    const body = { action: button.dataset.act };
+    if (button.dataset.index !== undefined) body.index = Number(button.dataset.index);
+    button.dataset.busy = "1";
+    try {
+      await api("POST", "/api/web/bridge", body);
+      await fill();
+    } catch (error) {
+      button.dataset.busy = "0";
+      const why = el("p", "machine-error", t("Couldn't change remote access: {why}", { why: error.message }));
+      button.after(why);
+    }
+  }
+
   return {
     /** Read the machines and draw them into the panel. */
-    async fill() {
-      const panel = document.getElementById("machines");
-      if (!panel) return;
-      panel.replaceChildren(el("p", "machine-why", t("Reading the machines…")));
-      try {
-        panel.replaceChildren(...draw(await api("GET", "/api/web/machines")));
-      } catch (error) {
-        panel.replaceChildren(el("p", "machine-error", t("Couldn't read the machines: {why}", { why: error.message })));
-      }
-    },
-    /** A click inside the panel: choose a row, and keep the panel's clicks its own. */
+    fill,
+    /** A click inside the panel: choose a row, act on remote access, and keep
+        the panel's clicks its own. */
     click(event) {
       event.stopPropagation();
+      const action = event.target.closest("[data-act]");
+      if (action) { void act(action); return; }
       const button = event.target.closest(".machine");
       if (button) void open(button);
     },
