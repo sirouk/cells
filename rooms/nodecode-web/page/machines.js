@@ -92,7 +92,22 @@ export function makeMachines({ api }) {
     const parts = [group(t("Remote access"))];
     if (!state) return parts;
     if (!state.available) {
-      parts.push(el("p", "machine-why", t("No tailnet names this machine, so there is nothing to serve it over.")));
+      const advice = state.advice;
+      if (!advice) {
+        parts.push(el("p", "machine-why", t("No tailnet names this machine, so there is nothing to serve it over.")));
+        return parts;
+      }
+      // What is missing, and where to go to fix it: a cell cannot install a
+      // tailnet, so it says which step stands in the way and links to it.
+      parts.push(el("p", "machine-why", advice.text || ""));
+      if (advice.step) parts.push(el("p", "machine-why", advice.step));
+      if (advice.url) {
+        const to = el("a", "machine-link", t(advice.label || "Open"));
+        to.href = advice.url;
+        to.target = "_blank";
+        to.rel = "noreferrer";
+        parts.push(to);
+      }
       return parts;
     }
     const toggle = row({

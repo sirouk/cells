@@ -851,6 +851,27 @@ cell loads before the gateway has published the port it forwards to."
                    rows))
     (coerce (nreverse rows) 'simple-vector)))
 
+(defun tailnet-advice ()
+  "What stands in the way of serving this page, and where to take that step.
+NIL when nothing does: an organism with a name and a tailscale to serve it
+needs no advice, and one whose serve fails says so in the refusal itself."
+  (cond
+    ((null (tailscale-binary))
+     (nlk:json-object
+      "reason" "not_installed"
+      "text" "Tailscale is not installed on this machine, so there is no tailnet address to serve this page at."
+      "step" "Install it from tailscale.com/download, run `tailscale up' and sign in. Nothing else is needed: the tailnet's own https address is what this page is served at, and it is the only address it is served at."
+      "label" "Get Tailscale"
+      "url" "https://tailscale.com/download"))
+    ((null (tailnet-name))
+     (nlk:json-object
+      "reason" "not_connected"
+      "text" "Tailscale is here, but this machine is not on a tailnet yet."
+      "step" "Run `tailscale up' and sign in for the account that owns this machine. Its address appears here once it is connected."
+      "label" "Tailscale"
+      "url" "https://login.tailscale.com/admin/machines"))
+    (t :null)))
+
 (defun bridge-json ()
   "Remote access as the panel reads it."
   (let ((running (bridge-running-p)))
@@ -862,6 +883,7 @@ cell loads before the gateway has published the port it forwards to."
      "code_minutes" (round *bridge-code-seconds* 60)
      "devices" (device-json)
      "refusal" (or *bridge-refusal* :null)
+     "advice" (tailnet-advice)
      "port" (if running (getf *bridge* :port) 0))))
 
 (defun bridge-act (env)
