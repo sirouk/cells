@@ -19,6 +19,7 @@ import { qrCode } from "./access.js";
 import { makeFiles, putFile } from "./files.js";
 import { makeBoard, COLUMNS } from "./board.js";
 import { icon, iconButton } from "./icons.js";
+import { makeMachines } from "./machines.js";
 import { recordingType, startRecording } from "./voice.js";
 import { makeHelpers } from "./helpers.js";
 
@@ -2774,6 +2775,7 @@ const control = makeControl({
 });
 // HOME is defined below, with the strip: read when drawn, not now.
 const filesView = makeFiles({ state, reach, save, toast, redraw: renderObserve, moved: () => writeLink(), home: (dir) => home(dir), openImage: openLightbox });
+const machinesView = makeMachines({ api });
 
 // The Board (board.js): tasks in To do, each started as a session it then follows.
 // A fork's session, opened from the Helpers band or the tree under its call:
@@ -5499,6 +5501,13 @@ function readLinkSoon() {
   linkReadTimer = setTimeout(() => control.link.read().then(paintLink), 150);
 }
 
+// Machines (machines.js): the mark opens the list and reading it starts on the
+// open, so a machine that came or went since the last look is fresh.
+$("machines-mark").addEventListener("click", () => {
+  if ($("machines").hasAttribute("data-open")) return;
+  void machinesView.fill();
+});
+$("machines").addEventListener("click", (event) => machinesView.click(event));
 $("uplink-mark").addEventListener("click", () => {
   if ($("uplink").hasAttribute("data-open")) return;
   $("uplink").replaceChildren(control.link.panel());

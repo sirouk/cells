@@ -12,8 +12,8 @@
   :description "Use nodecode in a browser tab; run nodecode web to open it"
   :license "MIT"
   :version "0.1.0"
-  :depends-on ("nodecode")
-  :components ((:file "cell") (:file "tasks"))
+  :depends-on ("nodecode" "dexador" "usocket")
+  :components ((:file "cell") (:file "tasks") (:file "machines"))
   :in-order-to ((test-op (test-op "nodecode-web/test"))))
 
 (defsystem "nodecode-web/test"
