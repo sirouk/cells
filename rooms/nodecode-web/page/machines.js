@@ -182,7 +182,9 @@ export function makeMachines({ api }) {
     try {
       bridge = await api("GET", "/api/web/bridge");
     } catch (error) {}
-    panel.replaceChildren(...draw(machines), ...remote(bridge, false));
+    // Remote access first: it is about this machine, and the list of others can
+    // run long enough to carry it out of sight at the bottom of the panel.
+    panel.replaceChildren(...remote(bridge, false), ...draw(machines));
   }
 
   /** Turn remote access on or off, mint a code, or forget a device. */

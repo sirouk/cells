@@ -480,7 +480,7 @@ authority, and nothing that only the front door planted."
   "Tell the far end of SOCKET that nothing more is coming."
   (ignore-errors (sb-bsd-sockets:socket-shutdown socket :direction :io)))
 
-(defun forward (client method target headers left)
+(defun forward (client method target headers body)
   "Send the request upstream and its answer back: a byte-for-byte pipe once the
 head is rewritten, so the page, its files and the socket at /gateway pass
 through as they are. One request to a connection: the answer is asked to close,
@@ -497,8 +497,8 @@ which the gateway honors, and then both ends go."
                 (close (null upgrade)))
            (unless (fd-write out (octets-of (forwarded-head method target headers close)))
              (return-from forward nil))
-           (when (plusp (length left))
-             (unless (fd-write out left) (return-from forward nil)))
+           (when (plusp (length body))
+             (unless (fd-write out body) (return-from forward nil)))
            (if upgrade
                ;; A socket is open both ways for as long as either says
                ;; something: one direction is listened to here, the other in
@@ -509,13 +509,9 @@ which the gateway honors, and then both ends go."
                  (pump out here)
                  (shut client)
                  (ignore-errors (sb-thread:join-thread back :timeout 60)))
-               ;; One request, one answer: any body it brought is sent on, and
-               ;; then the answer is carried back to its end.
-               (let ((declared (ignore-errors
-                                (parse-integer (or (header headers "content-length") "0")))))
-                 (when (and declared (plusp declared) (zerop (length left)))
-                   (unless (fd-write out (read-body here left declared))
-                     (return-from forward nil)))
+               ;; One request, one answer: the body came with it, already read,
+               ;; and the answer is then carried back to its end.
+               (progn
                  (pump out here)
                  (shut client))))
       (ignore-errors (sb-bsd-sockets:socket-close upstream)))))
@@ -612,6 +608,19 @@ held to be changed, the gateway's own answer, as it came."
                      do (vector-push-extend (aref buffer at) kept))))
     (subseq kept 0 (fill-pointer kept))))
 
+(defun request-body (fd left headers)
+  "The body of the request whose head gave HEADS, LEFT being what came past the
+head: all of it, read now. A proxy in front will not finish its stream while
+bytes it means to send are still unread on this side, so the body is taken
+before any answer goes back -- even one that ignores it."
+  (let ((declared (or (ignore-errors
+                        (parse-integer (or (header headers "content-length") "0")))
+                      0)))
+    (cond ((minusp declared) (subseq left 0 (min (length left) 0)))
+          ((> declared *bridge-max-body*) :too-big)
+          ((<= declared (length left)) (subseq left 0 declared))
+          (t (read-body fd left declared)))))
+
 (defun short-device-name (user-agent)
   "What to call the device a USER-AGENT speaks for."
   (cond ((null user-agent) "a device")
@@ -637,16 +646,13 @@ held to be changed, the gateway's own answer, as it came."
   (answer-bytes (socket-fd client) 200 "OK" (pair-headers)
                 (octets-of (pair-page (header headers "tailscale-user-login") ""))))
 
-(defun pair (client headers left)
+(defun pair (client headers body)
   "A posted pairing code: pair the device that presented it, or say why not."
   (let* ((fd (socket-fd client))
-         (declared (or (ignore-errors (parse-integer (or (header headers "content-length") "0")))
-                       0))
-         (body (when (<= declared *bridge-max-body*)
-                 (sb-ext:octets-to-string (read-body fd left declared) :external-format :utf-8)))
+         (text (sb-ext:octets-to-string body :external-format :utf-8))
          (login (header headers "tailscale-user-login"))
-         (token (and body (redeem-code (form-field body "code") login
-                                       (header headers "user-agent")))))
+         (token (redeem-code (form-field text "code") login
+                             (header headers "user-agent"))))
     (if token
         (answer-bytes fd 303 "See Other"
                       (list (cons "location" "/web/")
@@ -674,8 +680,11 @@ whatever else the gateway makes of it."
         (let* ((question (position #\? target))
                (path (if question (subseq target 0 question) target))
                (owner (getf *bridge* :login))
+               (body (request-body fd left headers))
                (login (header headers "tailscale-user-login")))
           (cond
+            ((eq body :too-big)
+             (refuse fd 413 "Payload Too Large" "over the request ceiling"))
             ;; Only the front door can name anyone: no header at all is a
             ;; request that never came through the tailnet.
             ((null login)
@@ -687,7 +696,7 @@ whatever else the gateway makes of it."
                      (format nil "this machine answers its operator only; ~a is not~%" login)))
             ((string= path "/pair")
              (if (string= method "POST")
-                 (pair client headers left)
+                 (pair client headers body)
                  (pairing-answer client headers)))
             ((null (paired-cookie headers))
              (redirect fd "/pair"))
@@ -700,7 +709,7 @@ whatever else the gateway makes of it."
              (redirect fd "/web/"))
             ((member path '("/web/" "/web" "/web/index.html") :test #'string=)
              (served-page client method target headers))
-            (t (forward client method target headers left))))))))
+            (t (forward client method target headers body))))))))
 
 (defun bridge-serve-connection (client)
   "Answer one connection, then let it go -- and keep what went wrong, if
@@ -890,3 +899,9 @@ stops it, mints a pairing code, or forgets a device."
     ((:get :head) (bridge-json))
     (:post (bridge-act env))
     (t (tasks-refused 405 "method" "GET reads remote access; POST acts on it"))))
+
+;; Remote access was left on, and the process that held it is not this one:
+;; start it again, rather than leaving tailscaled serving a port nothing has.
+;; Here, at the end of the last file this system loads: the wish is read only
+;; once everything it needs is defined.
+(bridge-resume)
