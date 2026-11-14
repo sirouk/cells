@@ -711,7 +711,7 @@ whatever else the gateway makes of it."
              (refuse fd 413 "Payload Too Large" "over the request ceiling"))
             ;; Only the front door can name anyone: no header at all is a
             ;; request that never came through the tailnet.
-            ((null login)
+            ((or (null login) (string= login ""))
              (setf *bridge-refusal* "a request that did not come through the tailnet")
              (refuse fd 403 "Forbidden" "this address answers through the tailnet only"))
             ((string= path "/pair")
