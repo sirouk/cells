@@ -13,7 +13,7 @@
   :license "MIT"
   :version "0.1.0"
   :depends-on ("nodecode" "dexador" "usocket")
-  :components ((:file "cell") (:file "tasks") (:file "machines") (:file "bridge"))
+  :components ((:file "cell") (:file "tasks") (:file "machines"))
   :in-order-to ((test-op (test-op "nodecode-web/test"))))
 
 (defsystem "nodecode-web/test"
