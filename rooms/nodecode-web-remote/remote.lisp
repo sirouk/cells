@@ -1010,8 +1010,11 @@ in the order the steps have to be taken. NIL when nothing does."
     (t :null)))
 
 (defun bridge-json ()
-  "Remote access as the panel reads it."
-  (let ((running (bridge-running-p)))
+  "Remote access as the panel reads it. A refusal is read once: the panel is
+not a log, and a line about a request that failed an hour ago reads as a fault."
+  (let ((running (bridge-running-p))
+        (refusal *bridge-refusal*))
+    (setf *bridge-refusal* nil)
     (nlk:json-object
      "available" (and (tailscale-binary) (tailnet-name) (tailnet-https-p) t)
      "https_port" (bridge-https-port)
@@ -1020,7 +1023,7 @@ in the order the steps have to be taken. NIL when nothing does."
      "code" (if (code-live-p) (getf *bridge* :code) :null)
      "code_minutes" (round *bridge-code-seconds* 60)
      "devices" (device-json)
-     "refusal" (or *bridge-refusal* :null)
+     "refusal" (or refusal :null)
      "advice" (tailnet-advice)
      "port" (if running (getf *bridge* :port) 0))))
 
