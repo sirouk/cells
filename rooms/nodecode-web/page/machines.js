@@ -16,9 +16,10 @@
 // that types it is paired, and can be forgotten on its own. The address is text
 // to read and copy, never a link this page follows: it is this page, elsewhere.
 import { el } from "./observe.js";
+import { iconButton } from "./icons.js";
 import { t } from "./i18n.js";
 
-export function makeMachines({ api }) {
+export function makeMachines({ api, toast }) {
   /** A row: one line, a dot for whether it is on, a name, and a word about it. */
   function row({ name, meta, link, host, current, on }) {
     const button = el("button", "machine");
@@ -88,6 +89,32 @@ export function makeMachines({ api }) {
   }
 
   /** This organism at its node's own https name, and the devices paired to it. */
+  /** A small button that puts TEXT on the clipboard, and says that it did. */
+  function copyButton(text, label, done) {
+    const button = iconButton("copy", label, "machine-copy");
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      (navigator.clipboard
+        ? navigator.clipboard.writeText(text)
+        : Promise.reject(new Error("no clipboard")))
+        .then(() => toast(done),
+              () => toast(t("Couldn't copy: the browser refused the clipboard"), { error: true }));
+    });
+    return button;
+  }
+
+  /** The address: a link to the same page elsewhere, and a button for it. */
+  function addressRow(url) {
+    const row = el("p", "machine-address");
+    if (!url) return row;
+    const to = el("a", "machine-address-link", url);
+    to.href = url;
+    to.target = "_blank";
+    to.rel = "noreferrer";
+    row.append(to, copyButton(url, t("Copy the address"), t("Copied the address")));
+    return row;
+  }
+
   function remote(state, busy) {
     const parts = [group(t("Remote access"))];
     if (!state) return parts;
@@ -120,13 +147,15 @@ export function makeMachines({ api }) {
     parts.push(toggle);
     if (!state.running) return parts;
 
-    // The address is for reading and copying, so it is text, not a link.
-    parts.push(el("p", "machine-address", state.address || ""));
+    // The address is this page on another machine: a link to follow in a tab
+    // of its own, and a button for the times it is wanted on another device.
+    parts.push(addressRow(state.address));
     // A code is spent by the device that pairs with it, and none stands
     // until one is asked for: the panel always offers the asking.
     const code = el("div", "machine-code");
     if (state.code) {
       code.append(el("span", "code", state.code),
+                  copyButton(state.code, t("Copy the code"), t("Copied the code")),
                   el("span", "meta", t("expires in {n} minutes", { n: state.code_minutes })));
     }
     code.append(link(t("new code"), "code"));

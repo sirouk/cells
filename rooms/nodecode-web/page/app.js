@@ -2775,7 +2775,7 @@ const control = makeControl({
 });
 // HOME is defined below, with the strip: read when drawn, not now.
 const filesView = makeFiles({ state, reach, save, toast, redraw: renderObserve, moved: () => writeLink(), home: (dir) => home(dir), openImage: openLightbox });
-const machinesView = makeMachines({ api });
+const machinesView = makeMachines({ api, toast });
 
 // The Board (board.js): tasks in To do, each started as a session it then follows.
 // A fork's session, opened from the Helpers band or the tree under its call:

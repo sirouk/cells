@@ -2052,11 +2052,17 @@ button.p-row:active { background: var(--field-lit); }
 .machine[data-current] .meta { color: var(--tertiary); }
 .machine-why { margin: 0; padding: 4px 10px 6px; font-size: 11px; line-height: 1.45; color: var(--tertiary); }
 .machine-error { margin: 0; padding: 2px 10px 7px 24px; font-size: 11px; line-height: 1.45; color: var(--danger-lit); }
-/* Remote access (machines.js, bridge.lisp): the address is text to copy and
-   the code is a code to type, so both are selectable and neither is a link. */
-.machine-address { margin: 0; padding: 0 10px 6px; font-family: var(--mono); font-size: 11px;
-                   line-height: 1.45; color: var(--tertiary); word-break: break-all;
-                   user-select: text; }
+/* Remote access (remote.lisp): the address is this page on another machine,
+   so it is a link that follows, with a button for copying it; the code is a
+   code to type or copy, with a button of its own. */
+.machine-address { display: flex; align-items: center; gap: 6px; margin: 0; padding: 0 10px 6px; }
+.machine-address-link { font-family: var(--mono); font-size: 11px; line-height: 1.45;
+                        color: var(--accent); word-break: break-all; text-decoration: none;
+                        user-select: text; }
+.machine-address-link:hover { text-decoration: underline; }
+.machine-copy { flex: 0 0 auto; display: inline-flex; align-items: center; border: 0;
+                background: none; padding: 0 1px; color: var(--tertiary); cursor: pointer; }
+.machine-copy:hover { color: var(--primary); }
 .machine-code, .machine-device { display: flex; align-items: center; gap: 8px; padding: 2px 10px 4px;
                                  font-size: 11px; color: var(--tertiary); }
 .machine-code .code { font-family: var(--micro); letter-spacing: .14em; color: var(--primary);

@@ -706,6 +706,10 @@ whatever else the gateway makes of it."
                (path (if question (subseq target 0 question) target))
                (body (request-body fd left headers))
                (login (header headers "tailscale-user-login")))
+          ;; A refusal is news only until the next request that arrives the way
+          ;; it should: the panel is not a log, and one old line reads as a fault.
+          (when (and login (plusp (length login)))
+            (setf *bridge-refusal* nil))
           (cond
             ((eq body :too-big)
              (refuse fd 413 "Payload Too Large" "over the request ceiling"))
