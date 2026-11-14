@@ -21,6 +21,8 @@
 
 (in-package #:nodecode-web-remote)
 
+(nlk:define-peripheral remote :not-running t)
+
 ;;; --- what the gateway and the rest of the cell offer --------------------
 
 (defun free-loopback-port ()
@@ -77,7 +79,9 @@ body is read to its end either way, so the connection is left clean."
   (or (loop for candidate in '("tailscale"
                               "/usr/local/bin/tailscale"
                               "/opt/homebrew/bin/tailscale"
-                              "/Applications/Tailscale.app/Contents/MacOS/Tailscale")
+                              "/Applications/Tailscale.app/Contents/MacOS/Tailscale"
+                              "C:\\Program Files\\Tailscale\\tailscale.exe"
+                              "C:\\Program Files (x86)\\Tailscale\\tailscale.exe")
             when (handler-case (progn (uiop:run-program (list candidate "version") :output :string
                                                        :error-output nil :ignore-error-status t)
                                       t)

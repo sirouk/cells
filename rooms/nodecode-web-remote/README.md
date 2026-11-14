@@ -16,6 +16,10 @@ device keeps a cookie and can be forgotten on its own.
   serves on its https root keeps working. A path under 443 was tried and does
   not work: `tailscale serve --set-path` strips the prefix, and the page asks
   its gateway for absolute paths.
+- **A port already in use is not taken.** If the port it wanted is serving
+  something of someone else's, it moves to the next free one and says which in
+  the panel; the address it shows is always the port it actually took. An entry
+  left behind by a run that died is recognised as its own and taken back.
 - **`tailscale serve`, not `funnel`.** Serve is reachable from your tailnet
   only. Funnel would publish this to the internet.
 - **Who connected is Tailscale's word, not the client's.** `serve` replaces any

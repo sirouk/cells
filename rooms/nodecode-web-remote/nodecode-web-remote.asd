@@ -8,7 +8,7 @@
 ;;;; port of its own and leaves 443 alone.
 
 (defsystem "nodecode-web-remote"
-  :description "Reach this organism from the rest of the tailnet, over https"
+  :description "Reach this organism from the rest of the tailnet over its own https port, pairing each device with a code"
   :license "MIT"
   :version "0.1.0"
   :depends-on ("nodecode" "usocket")

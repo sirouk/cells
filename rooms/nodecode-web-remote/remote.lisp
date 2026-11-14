@@ -62,6 +62,9 @@ before they arrive, so a path scope would break the page -- while a second
 port is a mapping of its own that leaves the node's 443 exactly as it was.")
 (defparameter *bridge-cookie-seconds* (* 30 24 60 60)
   "How long a paired device stays paired, in seconds.")
+(defparameter *bridge-port-span* 10
+  "How many https ports past the one asked for this cell will look for a free
+one before giving up and saying so.")
 (defparameter *bridge-code-seconds* (* 10 60)
   "How long a pairing code works for, in seconds.")
 (defparameter *bridge-script-path* "/__bridge.js"
@@ -107,16 +110,20 @@ port is a mapping of its own that leaves the node's 443 exactly as it was.")
 (defun bridge-https-port ()
   "The https port to serve on: the cell's setting when it has one, else 8443.
 Never 443, which is not this cell's to take."
-  (let ((chosen (ignore-errors (setting :https_port))))
+  ;; The declared name is `https_port'; the key SETTING reads is the wire
+  ;; symbol, :HTTPS-PORT. Reading the declared spelling answers NIL, silently.
+  (let ((chosen (ignore-errors (setting :https-port))))
     (if (and (integerp chosen) (plusp chosen) (/= chosen 443))
         chosen
         *bridge-https-port*)))
 
 (defun bridge-address ()
   "The https address this bridge answers at, or NIL when this machine is not
-on a tailnet that has HTTPS."
+on a tailnet that has HTTPS. A running bridge answers at the port it took,
+which is the one asked for unless that was someone else's."
   (let ((name (tailnet-name)))
-    (and name (format nil "https://~a:~d/web/" name (bridge-https-port)))))
+    (and name (format nil "https://~a:~d/web/" name
+                      (or (getf *bridge* :https-port) (bridge-https-port))))))
 
 ;;; --- paired devices -----------------------------------------------------
 
@@ -792,35 +799,85 @@ whether it worked wants; this is for the ones that read what it said."
               (values (or output "") (eql 0 code)))
           (error () (values "" nil))))))
 
-(defun https-port-taken-p (port)
-  "Is PORT already serving something at this node? Then it is not ours to
-replace: the answer names what is there, so the panel can say so."
+(defun served-target-at (port)
+  "What the node already serves at https PORT: the proxy target, :other for a
+handler whose target is a file or a text, or NIL for a port with no config."
   (multiple-value-bind (output okp)
-      (tailscale-output "serve" "status")
+      (tailscale-output "serve" "status" "--json")
     (when okp
-      (let ((there (format nil ":~d " port)))
-        (dolist (line (uiop:split-string output :separator '(#\Newline)))
-          (when (search there line)
-            (return-from https-port-taken-p (string-trim '(#\Space #\Return) line))))
-        nil))))
+      (let* ((status (ignore-errors (nlk:decode-json output)))
+             (web (and (hash-table-p status) (gethash "Web" status)))
+             (suffix (format nil ":~d" port))
+             (found nil))
+        (when (hash-table-p web)
+          (maphash (lambda (host handlers)
+                     (when (and (null found)
+                                (>= (length host) (length suffix))
+                                (string= suffix host :start2 (- (length host) (length suffix))))
+                       (let* ((table (and (hash-table-p handlers) (gethash "Handlers" handlers)))
+                              (root (and (hash-table-p table) (gethash "/" table))))
+                         (setf found (if (hash-table-p root)
+                                         (or (nlk:json-value root :text "Proxy") :other)
+                                         :other)))))
+                   web))
+        found))))
 
-(defun serve-on (port)
-  "Serve this bridge on its own https port => (values OKP WHY). Not 443, and
-not a path under it: the node's root keeps whatever it was serving."
-  (let ((taken (https-port-taken-p (bridge-https-port))))
-    (when taken
+(defun loopback-target-p (target)
+  "Is TARGET one of this cell's own: a plain http proxy to loopback?"
+  (and (stringp target)
+       (uiop:string-prefix-p "http://127.0.0.1:" target)
+       (every #'digit-char-p (subseq target (length "http://127.0.0.1:")))))
+
+(defun listening-p (port)
+  "Is something accepting connections on loopback at PORT?"
+  (handler-case
+      (let ((socket (make-instance 'sb-bsd-sockets:inet-socket :type :stream :protocol :tcp)))
+        (unwind-protect
+             (progn (sb-bsd-sockets:socket-connect
+                     socket (sb-bsd-sockets:make-inet-address "127.0.0.1") port)
+                    t)
+          (ignore-errors (sb-bsd-sockets:socket-close socket))))
+    (error () nil)))
+
+(defun port-ours-to-take-p (port)
+  "May this cell serve on https PORT? (values OKP WHY). A port with no config
+is free; one whose handler is our own loopback proxy, from a run that died
+before it could take it down, is ours to take back; anything else is someone
+else's and is left alone."
+  (let ((target (served-target-at port)))
+    (cond
+      ((null target) (values t nil))
+      ((and (loopback-target-p target)
+            (not (listening-p (parse-integer (subseq target (length "http://127.0.0.1:"))))))
+       (values t nil))
+      (t (values nil (format nil "port ~d already serves ~a here"
+                             port (if (stringp target) target "something else")))))))
+
+(defun serve-on (target-port)
+  "Serve this bridge on an https port of its own => (values OKP WHY PORT). The
+port asked for, unless this node already serves something else there: then the
+next free one in the span. 443 is never taken, and no path under it."
+  (let ((chosen nil) (why nil)
+        (preferred (bridge-https-port)))
+    (loop for port from preferred below (+ preferred *bridge-port-span*)
+          do (multiple-value-bind (free reason) (port-ours-to-take-p port)
+               (if free (progn (setf chosen port) (return)) (setf why reason))))
+    (unless chosen
       (return-from serve-on
-        (values nil (format nil "port ~d is already served at this node (~a); give this cell another port"
-                            (bridge-https-port) taken)))))
-  (multiple-value-bind (output okp)
-      (run-tailscale "serve" "--bg" (format nil "--https=~d" (bridge-https-port))
-                     (format nil "http://127.0.0.1:~d" port))
-    (values okp output)))
+        (values nil (or why (format nil "no free https port in ~d..~d"
+                                    preferred (+ preferred (1- *bridge-port-span*))))
+                nil)))
+    (multiple-value-bind (output okp)
+        (run-tailscale "serve" "--bg" (format nil "--https=~d" chosen)
+                       (format nil "http://127.0.0.1:~d" target-port))
+      (values okp output chosen))))
 
 (defun serve-off ()
   "Take this bridge's own https port back down, and nothing else: 443 is not
 this cell's to touch, and neither is any other port the node serves."
-  (run-tailscale "serve" (format nil "--https=~d" (bridge-https-port)) "off"))
+  (run-tailscale "serve" (format nil "--https=~d" (or (getf *bridge* :https-port)
+                                                       (bridge-https-port)))
+                 "off"))
 
 (defun bridge-running-p ()
   "Is remote access on?"
@@ -847,12 +904,20 @@ but serve's own https listener; this bridge is behind it, on loopback."
                            :code nil :code-expires nil))
       (setf (getf *bridge* :thread)
             (sb-thread:make-thread (lambda () (bridge-accept-loop server)) :name "web bridge"))
-      (multiple-value-bind (okp why) (serve-on port)
+      (multiple-value-bind (okp why https)
+          ;; A serve that signals rather than answers would leave the listener
+          ;; up and the bridge marked on with no tunnel behind it, so it is
+          ;; caught here and taken down the same way.
+          (handler-case (serve-on port)
+            (error (condition) (values nil (princ-to-string condition) nil)))
         (unless okp
           (ignore-errors (sb-bsd-sockets:socket-close server))
           (setf *bridge* nil)
           (return-from bridge-start
             (values nil (format nil "tailscale would not serve it: ~a" why))))
+        ;; The port it took, not the one asked for: a device's address and the
+        ;; teardown both follow this, so nothing is ever taken down blind.
+        (setf (getf *bridge* :https-port) https)
         (keep-intent t)
         (mint-code))
       (values t (bridge-address)))))
