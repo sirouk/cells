@@ -90,130 +90,6 @@ export function makeMachines({ api, toast }) {
 
   /** This organism at its node's own https name, and the devices paired to it. */
   /** A small button that puts TEXT on the clipboard, and says that it did. */
-  function copyButton(text, label, done) {
-    const button = iconButton("copy", label, "machine-copy");
-    button.addEventListener("click", (event) => {
-      event.stopPropagation();
-      (navigator.clipboard
-        ? navigator.clipboard.writeText(text)
-        : Promise.reject(new Error("no clipboard")))
-        .then(() => toast(done),
-              () => toast(t("Couldn't copy: the browser refused the clipboard"), { error: true }));
-    });
-    return button;
-  }
-
-  /** The address: a link to the same page elsewhere, and a button for it. */
-  function addressRow(url) {
-    const row = el("p", "machine-address");
-    if (!url) return row;
-    const to = el("a", "machine-address-link", url);
-    to.href = url;
-    to.target = "_blank";
-    to.rel = "noreferrer";
-    row.append(to, copyButton(url, t("Copy the address"), t("Copied the address")));
-    return row;
-  }
-
-  function remote(state, busy) {
-    const parts = [group(t("Remote access"))];
-    if (!state) return parts;
-    if (!state.available) {
-      const advice = state.advice;
-      if (!advice) {
-        parts.push(el("p", "machine-why", t("No tailnet names this machine, so there is nothing to serve it over.")));
-        return parts;
-      }
-      // What is missing, and where to go to fix it: a cell cannot install a
-      // tailnet, so it says which step stands in the way and links to it.
-      parts.push(el("p", "machine-why", advice.text || ""));
-      if (advice.step) parts.push(el("p", "machine-why", advice.step));
-      if (advice.url) {
-        const to = el("a", "machine-link", t(advice.label || "Open"));
-        to.href = advice.url;
-        to.target = "_blank";
-        to.rel = "noreferrer";
-        parts.push(to);
-      }
-      return parts;
-    }
-    const toggle = row({
-      name: t("Remote access"),
-      meta: busy ? t("working…") : state.running ? t("on") : t("off"),
-      on: state.running,
-    });
-    toggle.dataset.act = state.running ? "stop" : "start";
-    if (busy) toggle.dataset.busy = "1";
-    parts.push(toggle);
-    if (!state.running) return parts;
-
-    // The address is this page on another machine: a link to follow in a tab
-    // of its own, and a button for the times it is wanted on another device.
-    parts.push(addressRow(state.address));
-    // A code is spent by the device that pairs with it, and none stands
-    // until one is asked for: the panel always offers the asking.
-    const code = el("div", "machine-code");
-    if (state.code) {
-      code.append(el("span", "code", state.code),
-                  copyButton(state.code, t("Copy the code"), t("Copied the code")),
-                  el("span", "meta", t("expires in {n} minutes", { n: state.code_minutes })));
-    }
-    code.append(link(t("new code"), "code"));
-    parts.push(code);
-    for (const device of state.devices || []) {
-      const each = el("div", "machine-device");
-      // Whose account paired it: with more than one identity on a tailnet, a
-      // device is only identifiable by what it signed in as.
-      each.append(el("span", "name", device.name),
-                  el("span", "meta", device.login || ""),
-                  link(t("forget"), "forget", device.index));
-      parts.push(each);
-    }
-    if (state.refusal) parts.push(el("p", "machine-why", state.refusal));
-    return parts;
-  }
-
-  /** Framed, the page cannot become another origin: the frame is moved for it. */
-  const framed = window.parent !== window;
-  function go(url) {
-    if (framed) {
-      // The view that framed this page holds the clipboard and the frame: it
-      // lifts the target's frame refusal by proxying it, so it is asked to move.
-      try {
-        window.parent.postMessage({ nodecode: "frame", id: 0, kind: "switch", payload: { url } }, "*");
-        return;
-      } catch (error) {}
-    }
-    window.location.assign(url);
-  }
-
-  /** Choose a machine: a link is followed, a peer is reached first. */
-  async function open(button) {
-    if (button.dataset.busy === "1") return;
-    if (button.dataset.link) {
-      // The same tab, on the other organism's own origin.
-      go(button.dataset.link);
-      return;
-    }
-    const host = button.dataset.host;
-    if (!host) return;
-    const meta = button.querySelector(".meta");
-    const was = meta?.textContent || "";
-    button.dataset.busy = "1";
-    if (meta) meta.textContent = t("reaching it…");
-    try {
-      const answer = await api("POST", "/api/web/machines", { action: "connect", host });
-      if (!answer?.url) throw new Error(t("no link came back"));
-      go(answer.url);
-    } catch (error) {
-      button.dataset.busy = "0";
-      if (meta) meta.textContent = was;
-      const why = el("p", "machine-error", t("Couldn't reach {name}: {why}", { name: button.dataset.name || host, why: error.message }));
-      button.after(why);
-    }
-  }
-
-  /** Read both lists and draw them into the panel. */
   async function fill() {
     const panel = document.getElementById("machines");
     if (!panel) return;
@@ -226,40 +102,19 @@ export function makeMachines({ api, toast }) {
       panel.replaceChildren(el("p", "machine-error", t("Couldn't read the machines: {why}", { why: error.message })));
       return;
     }
-    // Remote access answers on its own: a cell without it still lists machines.
-    try {
-      bridge = await api("GET", "/api/remote");
-    } catch (error) {}
-    // Remote access first: it is about this machine, and the list of others can
-    // run long enough to carry it out of sight at the bottom of the panel.
-    panel.replaceChildren(...remote(bridge, false), ...draw(machines));
-  }
-
-  /** Turn remote access on or off, mint a code, or forget a device. */
-  async function act(button) {
-    if (button.dataset.busy === "1") return;
-    const body = { action: button.dataset.act };
-    if (button.dataset.index !== undefined) body.index = Number(button.dataset.index);
-    button.dataset.busy = "1";
-    try {
-      await api("POST", "/api/remote", body);
-      await fill();
-    } catch (error) {
-      button.dataset.busy = "0";
-      const why = el("p", "machine-error", t("Couldn't change remote access: {why}", { why: error.message }));
-      button.after(why);
-    }
+    // Tailnet access is not drawn here: this panel is the page's list of other
+    // organisms, and the editor's own Tailnet mark is the one place to turn it
+    // on and see who is paired. Two controls for one thing read as two things.
+    panel.replaceChildren(...draw(machines));
   }
 
   return {
     /** Read the machines and draw them into the panel. */
     fill,
-    /** A click inside the panel: choose a row, act on remote access, and keep
-        the panel's clicks its own. */
+    /** A click inside the panel: choose a machine, and keep the panel's clicks
+        its own. */
     click(event) {
       event.stopPropagation();
-      const action = event.target.closest("[data-act]");
-      if (action) { void act(action); return; }
       const button = event.target.closest(".machine");
       if (button) void open(button);
     },
