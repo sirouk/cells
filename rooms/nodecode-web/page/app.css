@@ -2029,50 +2029,36 @@ button.p-row:active { background: var(--field-lit); }
 }
 .pop .choice:hover { color: var(--primary); background: var(--selected); }
 
-/* Machines (machines.js): the organisms this one can switch to. The one serving
-   this tab is pinned first and reads as current; a row that is somewhere to go
-   lifts on hover, and one being reached says so in its own line. */
-.machines-pop { width: min(320px, calc(100vw - 34px)); max-height: min(66vh, 460px); overflow-y: auto; }
-.machine-group { padding: 8px 10px 3px; font-family: var(--micro); font-size: 10px; letter-spacing: .06em;
-                 text-transform: uppercase; color: var(--faint); }
-.machine-group:first-child { padding-top: 2px; }
-.machine { display: flex; align-items: center; gap: 9px; width: 100%; padding: 6px 10px; border: 0;
-           border-radius: var(--r-control); background: none; color: var(--secondary); text-align: left;
-           font: inherit; font-size: var(--fs-detail); cursor: pointer; }
-.machine:hover { color: var(--primary); background: var(--selected); }
-.machine[data-current] { color: var(--primary); cursor: default; }
-.machine[data-current]:hover { background: none; }
-.machine[data-busy] { cursor: progress; }
-.machine .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--dim); flex: 0 0 auto; }
-.machine .dot[data-state="on"] { background: var(--live); }
-.machine .name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.machine .meta { flex: 0 0 auto; font-size: 11px; color: var(--tertiary);
-                 font-variant-numeric: tabular-nums; }
-.machine:hover .meta { color: var(--muted); }
-.machine[data-current] .meta { color: var(--tertiary); }
-.machine-why { margin: 0; padding: 4px 10px 6px; font-size: 11px; line-height: 1.45; color: var(--tertiary); }
-.machine-error { margin: 0; padding: 2px 10px 7px 24px; font-size: 11px; line-height: 1.45; color: var(--danger-lit); }
-/* Remote access (remote.lisp): the address is this page on another machine,
-   so it is a link that follows, with a button for copying it; the code is a
-   code to type or copy, with a button of its own. */
-.machine-address { display: flex; align-items: center; gap: 6px; margin: 0; padding: 0 10px 6px; }
-.machine-address-link { font-family: var(--mono); font-size: 11px; line-height: 1.45;
-                        color: var(--accent); word-break: break-all; text-decoration: none;
-                        user-select: text; }
-.machine-address-link:hover { text-decoration: underline; }
-.machine-copy { flex: 0 0 auto; display: inline-flex; align-items: center; border: 0;
-                background: none; padding: 0 1px; color: var(--tertiary); cursor: pointer; }
-.machine-copy:hover { color: var(--primary); }
-.machine-code, .machine-device { display: flex; align-items: center; gap: 8px; padding: 2px 10px 4px;
-                                 font-size: 11px; color: var(--tertiary); }
-.machine-code .code { font-family: var(--micro); letter-spacing: .14em; color: var(--primary);
-                      user-select: text; }
-.machine-code .meta, .machine-device .name { flex: 1 1 auto; min-width: 0; overflow: hidden;
-                                             text-overflow: ellipsis; white-space: nowrap; }
-.machine-link { border: 0; background: none; padding: 2px 2px; color: var(--accent);
-                font: inherit; font-size: 11px; cursor: pointer; }
-.machine-link:hover { text-decoration: underline; }
-.machine-link[data-busy] { opacity: .5; cursor: progress; }
+/* The Tailnet pill (tailnet.js): the head's last word, a dot for where this
+   page comes from -- green on this machine while it serves the tailnet, blue
+   from another machine -- and under it how this machine is reached, and the
+   other machines to switch to. */
+.tailnet-wrap { position: relative; flex: none; margin-left: auto; }
+.tailnet-mark { display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 10px;
+  border: 1px solid var(--seam-lit); border-radius: var(--r-pill); background: none; cursor: pointer;
+  font: 500 var(--fs-micro)/1 var(--micro); letter-spacing: var(--ls-micro); text-transform: uppercase; color: var(--tertiary); }
+.tailnet-mark:hover, .tailnet-mark[aria-expanded="true"] { color: var(--primary); border-color: var(--faint); }
+.tailnet-mark[hidden] { display: none; }
+.tn-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; box-shadow: inset 0 0 0 1px var(--tertiary); }
+.tn-dot[data-where="local"] { background: var(--live); box-shadow: none; }
+.tn-dot[data-where="remote"] { background: var(--duo-link); box-shadow: none; }
+.tailnet-mark[data-where="local"] .tn-dot { background: var(--live); box-shadow: none; }
+.tailnet-mark[data-where="remote"] .tn-dot { background: var(--duo-link); box-shadow: none; }
+.pop.tailnet-pop { width: min(320px, calc(100vw - 34px)); max-height: min(70vh, 520px); overflow-y: auto; padding: 12px 14px; gap: 8px; }
+.tn-row { display: flex; align-items: center; gap: 8px; min-height: 26px; font-size: var(--fs-detail); color: var(--primary); }
+.tn-grow { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tn-addr { font: var(--fs-micro) var(--mono); color: var(--secondary); }
+.tn-code { font-family: var(--micro); letter-spacing: var(--ls-micro); }
+.tn-dim { color: var(--tertiary); }
+.tn-why { margin: 0; font-size: var(--fs-micro); line-height: 1.5; color: var(--tertiary); }
+.tn-head { margin: 6px 0 0; }
+.tailnet-pop .quiet, .tailnet-pop .solid { flex: none; text-decoration: none; }
+.tailnet-pop [data-busy] { opacity: .5; cursor: progress; }
+/* A phone's head has no room for the word: the dot alone, the word still read aloud. */
+@media (max-width: 720px) {
+  .tailnet-mark { padding: 0; justify-content: center; border-color: transparent; }
+  .tailnet-mark > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+}
 .pop .choice[aria-checked="true"] { color: var(--primary); }
 .pop .choice[aria-checked="true"]::after {
   content: ""; width: 4px; height: 8px; margin: -3px 3px 0 0; transform: rotate(45deg);
@@ -2793,6 +2779,7 @@ button.p-row:active { background: var(--field-lit); }
    where it was, because two hit areas may not overlap. */
 
 @media (pointer: coarse), (max-width: 720px) {
+  .tailnet-mark { height: 44px; min-width: 44px; }
   /* Marks: 36 px. The strip's two, the sheets' close and an exec's stop have the
      room for 44. */
   .icon { width: 36px; height: 36px; padding: 4px; border-radius: var(--r-control); background-clip: content-box; }
@@ -3008,6 +2995,11 @@ button.p-row:active { background: var(--field-lit); }
   .strip .live > span { display: inline; }
   .strip .live .led { background: var(--run); }
   .strip > #more { grid-area: 1 / 3 / 3 / 4; align-self: center; justify-self: end; }
+  /* The Tailnet pill shares the right slot with More; both slots widen so the
+     title stays in the middle. */
+  .strip:has(> .tailnet-wrap > .tailnet-mark:not([hidden])) { grid-template-columns: 88px minmax(0, 1fr) 88px; }
+  .strip > .tailnet-wrap { grid-area: 1 / 3 / 3 / 4; align-self: center; justify-self: start; margin: 0; }
+  .strip:has(> #more[hidden]) > .tailnet-wrap { justify-self: end; }
   /* Chat and Run are under More, with Files: the bar keeps its three slots. */
   .strip > .views { display: none; }
   /* The tabs on every top page. Shut, the column slides away and is gone once

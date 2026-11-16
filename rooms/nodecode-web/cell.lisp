@@ -73,12 +73,10 @@ switch is on is served from here, so the page cannot turn it off."
 
 (nle:define-cell web
   (:section ("web")
-    (:guide "nothing to set: `nodecode web' opens the page; reach it from another machine of the tailnet under Machines, remote access"))
+    (:guide "nothing to set: `nodecode web' opens the page; reach it from another machine of the tailnet under its Tailnet pill"))
   (:route "/web/" #'serve-page :public t)
   (:route "/web" #'redirect-to-page :public t)
   ;; The Board's To do list (tasks.lisp), behind the operator token.
   (:route "/api/web/tasks" (lambda (env) (tasks-route env)))
-  ;; The other organisms this one can switch to (machines.lisp), behind it too.
-  (:route "/api/web/machines" (lambda (env) (machines-route env)))
   (:hook 'nle::cell-off-refusal #'keep-the-page))
 

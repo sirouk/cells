@@ -514,6 +514,7 @@ no enclosing try block holds, as the line it is on."
 
 (defparameter *web-hit-areas*
   '((44 ".strip .icon" "width" "height")             ; More, the sessions toggle
+    (44 ".tailnet-mark" "height" "min-width")       ; the Tailnet pill
     (44 ".ask .under .icon" "width" "height")        ; Rewind, Fork
     (44 ".round" "width" "height")                   ; send, stop, attach, the jump pill, a picture's close
     (44 ".chip" "min-height")                        ; the model

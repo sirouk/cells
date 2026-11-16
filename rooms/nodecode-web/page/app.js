@@ -19,7 +19,7 @@ import { qrCode } from "./access.js";
 import { makeFiles, putFile } from "./files.js";
 import { makeBoard, COLUMNS } from "./board.js";
 import { icon, iconButton } from "./icons.js";
-import { makeMachines } from "./machines.js";
+import { makeTailnet } from "./tailnet.js";
 import { recordingType, startRecording } from "./voice.js";
 import { makeHelpers } from "./helpers.js";
 
@@ -602,6 +602,7 @@ function receive(message) {
       loadDashboard();
       control.reconnected();
       control.link.read().then(paintLink);
+      if (tailnetView) void tailnetView.read();
       return;
     case "gateway_connect_rejected":
       state.ws = null;
@@ -2775,7 +2776,11 @@ const control = makeControl({
 });
 // HOME is defined below, with the strip: read when drawn, not now.
 const filesView = makeFiles({ state, reach, save, toast, redraw: renderObserve, moved: () => writeLink(), home: (dir) => home(dir), openImage: openLightbox });
-const machinesView = makeMachines({ api, toast });
+// The Tailnet pill (tailnet.js), drawn only in a tab of its own: inside the
+// editor, the editor's own pill around the frame says the same.
+const tailnetView = window.self === window.top
+  ? makeTailnet({ api, toast, mark: $("tailnet-mark"), panel: $("tailnet") })
+  : null;
 
 // The Board (board.js): tasks in To do, each started as a session it then follows.
 // A fork's session, opened from the Helpers band or the tree under its call:
@@ -5501,13 +5506,15 @@ function readLinkSoon() {
   linkReadTimer = setTimeout(() => control.link.read().then(paintLink), 150);
 }
 
-// Machines (machines.js): the mark opens the list and reading it starts on the
-// open, so a machine that came or went since the last look is fresh.
-$("machines-mark").addEventListener("click", () => {
-  if ($("machines").hasAttribute("data-open")) return;
-  void machinesView.fill();
-});
-$("machines").addEventListener("click", (event) => machinesView.click(event));
+// The Tailnet pill: drawn from what is known as it opens, and read again then,
+// so a machine that came or went since the last look is fresh.
+if (tailnetView) {
+  $("tailnet-mark").addEventListener("click", () => {
+    if ($("tailnet").hasAttribute("data-open")) return;
+    tailnetView.open();
+  });
+  $("tailnet").addEventListener("click", (event) => tailnetView.click(event));
+}
 $("uplink-mark").addEventListener("click", () => {
   if ($("uplink").hasAttribute("data-open")) return;
   $("uplink").replaceChildren(control.link.panel());
